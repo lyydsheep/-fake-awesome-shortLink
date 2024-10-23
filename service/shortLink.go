@@ -1,16 +1,24 @@
 package service
 
-import "awesome-shortLink/domain"
+import (
+	"awesome-shortLink/domain"
+	"awesome-shortLink/repository"
+	"context"
+)
 
 type ShortLinkService interface {
-	ShortenURL(url string) (domain.ShorLink, error)
+	ShortenURL(ctx context.Context, url string) (domain.ShortLink, error)
 }
 
 type ShortLinkServiceBasic struct {
-	repo ShortLinkRepository
+	repo repository.ShortLinkRepository
 }
 
-func NewShortLinkServiceBasic(repo ShortLinkRepository) ShortLinkService {
+func (svc *ShortLinkServiceBasic) ShortenURL(ctx context.Context, url string) (domain.ShortLink, error) {
+	return svc.repo.Create(ctx, url)
+}
+
+func NewShortLinkServiceBasic(repo repository.ShortLinkRepository) ShortLinkService {
 	return &ShortLinkServiceBasic{
 		repo: repo,
 	}
