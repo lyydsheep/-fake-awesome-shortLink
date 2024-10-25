@@ -1,13 +1,12 @@
 package ginx
 
 import (
-	"context"
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"net/http"
 )
 
-func WrapBody[Req any, T any](fn func(ctx context.Context, req Req) (Result[T], error)) gin.HandlerFunc {
+func WrapBody[Req any, T any](fn func(ctx *gin.Context, req Req) (Result[T], error)) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		var req Req
 		if err := ctx.Bind(&req); err != nil {

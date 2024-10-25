@@ -1,7 +1,7 @@
 package example
 
 import (
-	"awesome-shortLink/dao"
+	"awesome-shortLink/internal/repository/dao"
 	"awesome-shortLink/ioc"
 	"fmt"
 	"github.com/spf13/viper"
