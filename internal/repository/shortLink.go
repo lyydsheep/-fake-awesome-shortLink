@@ -2,6 +2,7 @@ package repository
 
 import (
 	"awesome-shortLink/internal/domain"
+	"awesome-shortLink/internal/repository/cache"
 	"awesome-shortLink/internal/repository/dao"
 	"context"
 	"go.uber.org/zap"
@@ -9,6 +10,7 @@ import (
 
 var (
 	ErrDuplicatedLongURL = dao.ErrDuplicatedLongURL
+	ErrNotFound          = dao.ErrNotFound
 )
 
 type ShortLinkRepository interface {
@@ -41,6 +43,29 @@ func NewShortLinkRepositoryV1(dao dao.ShortLinkDAO, l *zap.Logger) ShortLinkRepo
 	return &ShortLinkRepositoryV1{
 		dao: dao,
 		l:   l,
+	}
+}
+
+type ShortLinkRepositoryV2 struct {
+	dao   dao.ShortLinkDAO
+	l     *zap.Logger
+	cache cache.ShortLinkCache
+}
+
+func (repo *ShortLinkRepositoryV2) Create(ctx context.Context, longURL string) (domain.ShortLink, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (repo *ShortLinkRepositoryV2) FindByShort(ctx context.Context, shortURL string) (domain.ShortLink, error) {
+
+}
+
+func NewShortLinkRepositoryV2(dao dao.ShortLinkDAO, l *zap.Logger, cache cache.ShortLinkCache) ShortLinkRepository {
+	return &ShortLinkRepositoryV2{
+		dao:   dao,
+		l:     l,
+		cache: cache,
 	}
 }
 

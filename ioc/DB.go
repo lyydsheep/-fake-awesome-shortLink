@@ -8,10 +8,6 @@ import (
 	"gorm.io/gorm"
 )
 
-func init() {
-	InitViper()
-}
-
 func InitDB() *gorm.DB {
 	type Config struct {
 		DSN string `yaml:"dsn"`

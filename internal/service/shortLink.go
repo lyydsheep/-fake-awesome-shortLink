@@ -7,6 +7,10 @@ import (
 	"go.uber.org/zap"
 )
 
+var (
+	ErrNotFound = repository.ErrNotFound
+)
+
 type ShortLinkService interface {
 	ShortenURL(ctx context.Context, longURL string) (domain.ShortLink, error)
 	Obtain(ctx context.Context, shortURL string) (domain.ShortLink, error)

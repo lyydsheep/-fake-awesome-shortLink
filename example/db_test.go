@@ -2,7 +2,6 @@ package example
 
 import (
 	"awesome-shortLink/internal/repository/dao"
-	"awesome-shortLink/ioc"
 	"fmt"
 	"github.com/spf13/viper"
 	"gorm.io/driver/mysql"
@@ -10,9 +9,9 @@ import (
 	"testing"
 )
 
-func init() {
-	ioc.InitViper()
-}
+//func init() {
+//	ioc.InitViper()
+//}
 
 func TestDB(t *testing.T) {
 	dsnVal := viper.Get("db.dsn")
