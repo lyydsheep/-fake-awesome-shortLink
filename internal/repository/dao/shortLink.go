@@ -4,7 +4,6 @@ import (
 	"awesome-shortLink/tools"
 	"context"
 	"errors"
-	"fmt"
 	"gorm.io/gorm"
 	"time"
 )
@@ -23,12 +22,28 @@ var (
 )
 
 type ShortLinkDAO interface {
-	Insert(ctx context.Context, longURL string) (ShortLink, error)
+	InsertV1(ctx context.Context, longURL string) (ShortLink, error)
+	InsertV2(ctx context.Context, sl ShortLink) (ShortLink, error)
 	FindByShort(ctx context.Context, shortURL string) (ShortLink, error)
 }
 
 type ShortLinkDAOV1 struct {
 	db *gorm.DB
+}
+
+func (dao *ShortLinkDAOV1) InsertV2(ctx context.Context, sl ShortLink) (ShortLink, error) {
+	now := time.Now().UnixMilli()
+	sl.Ctime = now
+	sl.Utime = now
+	return sl, dao.db.Transaction(func(tx *gorm.DB) error {
+		err := tx.WithContext(ctx).Select("`short`").Where("`long` = ?", sl.Long).First(&sl).Error
+		switch {
+		case errors.Is(err, gorm.ErrRecordNotFound):
+			return tx.WithContext(ctx).Create(&sl).Error
+		default:
+			return err
+		}
+	})
 }
 
 func (dao *ShortLinkDAOV1) FindByShort(ctx context.Context, shortURL string) (ShortLink, error) {
@@ -37,7 +52,8 @@ func (dao *ShortLinkDAOV1) FindByShort(ctx context.Context, shortURL string) (Sh
 	return sl, err
 }
 
-func (dao *ShortLinkDAOV1) Insert(ctx context.Context, url string) (ShortLink, error) {
+// InsertV1 shortURL和MySQL耦合在一起，扩展性低
+func (dao *ShortLinkDAOV1) InsertV1(ctx context.Context, url string) (ShortLink, error) {
 	now := time.Now().UnixMilli()
 	sl := ShortLink{
 		Long:  url,
@@ -62,7 +78,6 @@ func (dao *ShortLinkDAOV1) Insert(ctx context.Context, url string) (ShortLink, e
 			return err
 		}
 	})
-	fmt.Println("")
 	return sl, err
 }
 

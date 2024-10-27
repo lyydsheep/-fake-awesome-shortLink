@@ -7,10 +7,9 @@ import (
 )
 
 type ShortLinkCache interface {
-	BFAdd(ctx context.Context, key string, val any) error
-	BFExists(ctx context.Context, key string, val any) bool
 	Set(ctx context.Context, key string, val any) error
 	Get(ctx context.Context, key string) (string, error)
+	Incr(ctx context.Context, key string) (int64, error)
 }
 
 type ShortLinkRedis struct {
@@ -18,12 +17,8 @@ type ShortLinkRedis struct {
 	expire time.Duration
 }
 
-func (cache *ShortLinkRedis) BFAdd(ctx context.Context, key string, val any) error {
-	return cache.rdb.BFAdd(ctx, key, val).Err()
-}
-
-func (cache *ShortLinkRedis) BFExists(ctx context.Context, key string, val any) bool {
-	return cache.rdb.BFExists(ctx, key, val).Val()
+func (cache *ShortLinkRedis) Incr(ctx context.Context, key string) (int64, error) {
+	return cache.rdb.Incr(ctx, key).Result()
 }
 
 func (cache *ShortLinkRedis) Set(ctx context.Context, key string, val any) error {
@@ -34,8 +29,9 @@ func (cache *ShortLinkRedis) Get(ctx context.Context, key string) (string, error
 	return cache.rdb.Get(ctx, key).Result()
 }
 
-func NewShortLinkRedis(rdb redis.Cmdable) ShortLinkCache {
+func NewShortLinkRedisV1(rdb redis.Cmdable) ShortLinkCache {
 	return &ShortLinkRedis{
-		rdb: rdb,
+		rdb:    rdb,
+		expire: time.Minute * 10,
 	}
 }

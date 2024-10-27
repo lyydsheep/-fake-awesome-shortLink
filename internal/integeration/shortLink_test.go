@@ -3,12 +3,15 @@ package integeration
 import (
 	"awesome-shortLink/ginx"
 	"awesome-shortLink/internal/integeration/startup"
+	"awesome-shortLink/internal/repository"
 	"awesome-shortLink/internal/repository/dao"
+	"awesome-shortLink/internal/repository/filter"
 	"awesome-shortLink/ioc"
 	"bytes"
 	"context"
 	"encoding/json"
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"gorm.io/gorm"
@@ -21,16 +24,21 @@ type ShortLinkSuite struct {
 	suite.Suite
 	server *gin.Engine
 	db     *gorm.DB
+	rdb    redis.Cmdable
+	filter filter.BloomFilter
 }
 
 func (s *ShortLinkSuite) SetupSuite() {
 	gin.SetMode(gin.ReleaseMode)
 	s.server = startup.InitWebServer()
 	s.db = ioc.InitDB()
+	s.rdb = ioc.InitRedis()
+	s.filter = filter.NewBloomFilterV1(s.rdb)
 }
 
 func (s *ShortLinkSuite) TearDownSuite() {
 	s.db.Exec("truncate table short_links")
+	s.rdb.FlushAll(context.Background())
 }
 
 func (s *ShortLinkSuite) TestShorten() {
@@ -133,23 +141,23 @@ func (s *ShortLinkSuite) TestObtain() {
 		{
 			name: "短链合法",
 			before: func(t *testing.T) {
-				err := s.db.Create(&dao.ShortLink{
-					Long:  "www.baidu.com",
+				sl := dao.ShortLink{
+					Long:  "https://www.baidu.com",
 					Short: "abc",
 					Ctime: 123,
 					Utime: 123,
-				}).Error
+				}
+				err := s.db.Create(&sl).Error
+				assert.NoError(t, err)
+				err = s.filter.BFAdd(context.Background(), "bloomFilter:shortURL", repository.GetFilterVal("abc"))
 				assert.NoError(t, err)
 			},
 			after: func(t *testing.T) {
 
 			},
-			input: "http://localhost:8080/sl/abc",
-			expectedRes: ginx.Result[string]{
-				Msg: "Ok",
-			},
+			input:            "http://localhost:8080/sl/abc",
 			expectedCode:     http.StatusFound,
-			expectedLocation: "www.baidu.com",
+			expectedLocation: "https://www.baidu.com",
 		},
 		{
 			name: "短链非法",
@@ -163,7 +171,7 @@ func (s *ShortLinkSuite) TestObtain() {
 				Code: 5,
 				Msg:  "系统错误",
 			},
-			expectedCode: http.StatusOK,
+			expectedCode: http.StatusNotFound,
 		},
 	}
 	for _, tc := range testCases {
@@ -174,10 +182,6 @@ func (s *ShortLinkSuite) TestObtain() {
 			resp := httptest.NewRecorder()
 			s.server.ServeHTTP(resp, req)
 			assert.Equal(t, tc.expectedCode, resp.Code)
-			var res ginx.Result[string]
-			err = json.NewDecoder(resp.Body).Decode(&res)
-			assert.NoError(t, err)
-			assert.Equal(t, tc.expectedRes, res)
 			assert.Equal(t, tc.expectedLocation, resp.Header().Get("Location"))
 			tc.after(t)
 		})

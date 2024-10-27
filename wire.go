@@ -14,7 +14,7 @@ import (
 
 func InitShortLinkHdl() *web.ShortLinkHandler {
 	wire.Build(web.NewShortLinkHandler, service.NewShortLinkServiceBasic,
-		repository.NewShortLinkRepositoryV1, dao.NewShortLinkDAOV1, ioc.InitDB, ioc.InitZap)
+		repository.NewShortLinkRepositoryV2, dao.NewShortLinkDAOV1, ioc.InitDB, ioc.InitZap)
 	return new(web.ShortLinkHandler)
 }
 
