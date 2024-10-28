@@ -8,7 +8,9 @@ package main
 
 import (
 	"awesome-shortLink/internal/repository"
+	"awesome-shortLink/internal/repository/cache"
 	"awesome-shortLink/internal/repository/dao"
+	"awesome-shortLink/internal/repository/filter"
 	"awesome-shortLink/internal/service"
 	"awesome-shortLink/internal/web"
 	"awesome-shortLink/ioc"
@@ -21,7 +23,11 @@ func InitShortLinkHdl() *web.ShortLinkHandler {
 	db := ioc.InitDB()
 	shortLinkDAO := dao.NewShortLinkDAOV1(db)
 	logger := ioc.InitZap()
-	shortLinkRepository := repository.NewShortLinkRepositoryV1(shortLinkDAO, logger)
+	cmdable := ioc.InitRedis()
+	shortLinkCache := cache.NewShortLinkRedisV1(cmdable)
+	bloomFilter := filter.NewBloomFilterV1(cmdable)
+	node := ioc.InitSnowFlakeNode()
+	shortLinkRepository := repository.NewShortLinkRepositoryV3(shortLinkDAO, logger, shortLinkCache, bloomFilter, node)
 	shortLinkService := service.NewShortLinkServiceBasic(shortLinkRepository, logger)
 	shortLinkHandler := web.NewShortLinkHandler(shortLinkService, logger)
 	return shortLinkHandler

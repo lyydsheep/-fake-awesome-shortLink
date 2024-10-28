@@ -10,24 +10,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/bwmarrin/snowflake"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
-
-var (
-	ErrDuplicatedLongURL = dao.ErrDuplicatedLongURL
-	ErrNotFound          = dao.ErrNotFound
-)
-
-const (
-	bloomFilterKey = "bloomFilter:shortURL"
-	countKey       = "CntIdKey"
-)
-
-type ShortLinkRepository interface {
-	Create(ctx context.Context, longURL string) (domain.ShortLink, error)
-	FindByShort(ctx context.Context, shortURL string) (domain.ShortLink, error)
-}
 
 type ShortLinkRepositoryV1 struct {
 	dao dao.ShortLinkDAO
@@ -132,7 +118,11 @@ func (repo *ShortLinkRepositoryV2) FindByShort(ctx context.Context, shortURL str
 		sl, err := repo.dao.FindByShort(ctx, shortURL)
 		go func() {
 			// 添加缓存
-			err := repo.cache.Set(ctx, getShortKey(sl.Short), sl.Long)
+			slByte, err := json.Marshal(sl)
+			if err != nil {
+				repo.l.Error("序列化失败", zap.Error(err))
+			}
+			err = repo.cache.Set(ctx, getShortKey(sl.Short), string(slByte))
 			if err != nil {
 				repo.l.Error("缓存同步失败", zap.Error(err))
 			}
@@ -158,6 +148,112 @@ func NewShortLinkRepositoryV2(dao dao.ShortLinkDAO, l *zap.Logger,
 		l:      l,
 		cache:  cache,
 		filter: filter,
+	}
+}
+
+type ShortLinkRepositoryV3 struct {
+	dao    dao.ShortLinkDAO
+	l      *zap.Logger
+	cache  cache.ShortLinkCache
+	filter filter.BloomFilter
+	node   *snowflake.Node
+}
+
+func (repo *ShortLinkRepositoryV3) Create(ctx context.Context, longURL string) (domain.ShortLink, error) {
+	slStr, err := repo.cache.Get(ctx, getLongKey(longURL))
+	switch {
+	case errors.Is(err, redis.Nil):
+		// 缓存中没有数据
+		id := repo.node.Generate()
+		sl, err := repo.dao.InsertV2(ctx, dao.ShortLink{Long: longURL, Short: tools.Encode(int64(id))})
+		go func() {
+			// 同步缓存
+			var err error
+			slByte, err := json.Marshal(sl)
+			if err != nil {
+				repo.l.Error("结构体序列化失败", zap.Error(err))
+				return
+			}
+			go func() {
+				err := repo.cache.Set(ctx, getLongKey(sl.Long), string(slByte))
+				if err != nil {
+					repo.l.Error("缓存同步失败", zap.Error(err))
+					return
+				}
+			}()
+			go func() {
+				err := repo.cache.Set(ctx, getShortKey(sl.Short), string(slByte))
+				if err != nil {
+					repo.l.Error("缓存同步失败", zap.Error(err))
+					return
+				}
+			}()
+		}()
+		go func() {
+			// 存入布隆过滤器
+			err := repo.filter.BFAdd(ctx, bloomFilterKey, GetFilterVal(sl.Short))
+			if err != nil {
+				repo.l.Error("布隆过滤器存放失败", zap.Error(err))
+			}
+		}()
+		return entityToDomain(sl), err
+	case err == nil:
+		// 缓存中有数据
+		var sl dao.ShortLink
+		err = json.Unmarshal([]byte(slStr), &sl)
+		if err != nil {
+			repo.l.Error("反序列化失败", zap.Error(err))
+			return domain.ShortLink{}, err
+		}
+		return entityToDomain(sl), nil
+	default:
+		return domain.ShortLink{}, err
+	}
+}
+
+func (repo *ShortLinkRepositoryV3) FindByShort(ctx context.Context, shortURL string) (domain.ShortLink, error) {
+	res, err := repo.cache.Check(ctx, bloomFilterKey, GetFilterVal(shortURL), getShortKey(shortURL))
+	if err != nil {
+		return domain.ShortLink{}, err
+	}
+	var sl domain.ShortLink
+	switch {
+	case len(res) > 0:
+		err = json.Unmarshal([]byte(res), &sl)
+		if err != nil {
+			repo.l.Error("反序列化失败", zap.Error(err))
+		}
+	default:
+		// 缓存没有值
+		t, err := repo.dao.FindByShort(ctx, shortURL)
+		if err != nil {
+			repo.l.Error("DB查询失败", zap.Error(err))
+			return domain.ShortLink{}, err
+		}
+		sl = entityToDomain(t)
+		go func() {
+			slByte, err := json.Marshal(sl)
+			if err != nil {
+				repo.l.Error("序列化失败", zap.Error(err))
+				return
+			}
+			err = repo.cache.Set(ctx, getShortKey(shortURL), string(slByte))
+			if err != nil {
+				repo.l.Error("缓存同步失败", zap.Error(err))
+			}
+		}()
+	}
+	return sl, nil
+}
+
+func NewShortLinkRepositoryV3(dao dao.ShortLinkDAO, l *zap.Logger,
+	cache cache.ShortLinkCache, filter filter.BloomFilter, node *snowflake.Node) ShortLinkRepository {
+	return &ShortLinkRepositoryV3{
+		dao:    dao,
+		l:      l,
+		cache:  cache,
+		filter: filter,
+		node:   node,
 	}
 }
 
